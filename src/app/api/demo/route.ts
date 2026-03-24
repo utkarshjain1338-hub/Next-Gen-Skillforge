@@ -93,6 +93,38 @@ const demoGraphData = {
 // GET demo data
 export async function GET() {
   try {
+    const ensureSeededJobSkills = async () => {
+      const skills = await db.skill.findMany({ select: { id: true, name: true } });
+      const jobs = await db.job.findMany({ select: { id: true, title: true } });
+      const existingRelations = await db.jobSkill.count();
+      if (existingRelations > 0 || skills.length === 0 || jobs.length === 0) return;
+
+      const skillIdByName = new Map(skills.map((s) => [s.name, s.id]));
+      const jobIdByTitle = new Map(jobs.map((j) => [j.title, j.id]));
+      const jobSkillRows: Array<{ jobId: string; skillId: string; required: boolean; importance: number }> = [];
+
+      const addJobSkills = (jobTitle: string, requiredSkills: string[], preferredSkills: string[]) => {
+        const jobId = jobIdByTitle.get(jobTitle);
+        if (!jobId) return;
+        requiredSkills.forEach((name) => {
+          const skillId = skillIdByName.get(name);
+          if (skillId) jobSkillRows.push({ jobId, skillId, required: true, importance: 1.0 });
+        });
+        preferredSkills.forEach((name) => {
+          const skillId = skillIdByName.get(name);
+          if (skillId) jobSkillRows.push({ jobId, skillId, required: false, importance: 0.7 });
+        });
+      };
+
+      addJobSkills("Full Stack Developer", ["JavaScript", "React", "Node.js", "SQL"], ["TypeScript", "AWS"]);
+      addJobSkills("Machine Learning Engineer", ["Python", "Machine Learning", "TensorFlow", "SQL"], ["Docker"]);
+      addJobSkills("Frontend Developer", ["JavaScript", "React", "CSS", "Git"], ["TypeScript"]);
+
+      if (jobSkillRows.length > 0) {
+        await db.jobSkill.createMany({ data: jobSkillRows });
+      }
+    };
+
     // Check if we have data in the database
     const existingSkills = await db.skill.count();
     
@@ -115,8 +147,7 @@ export async function GET() {
           { name: "CSS", category: "Frontend", icon: "palette" },
           { name: "MongoDB", category: "Database", icon: "database" },
           { name: "GraphQL", category: "API", icon: "share-2" }
-        ],
-        skipDuplicates: true
+        ]
       });
 
       // Create sample jobs
@@ -146,10 +177,13 @@ export async function GET() {
             salary: "$70k - $100k",
             description: "Create beautiful user interfaces"
           }
-        ],
-        skipDuplicates: true
+        ]
       });
+
+      await ensureSeededJobSkills();
     }
+
+    await ensureSeededJobSkills();
 
     return NextResponse.json({
       skills: demoSkills,

@@ -5,7 +5,8 @@ import { db } from "@/lib/db";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userSkills } = body; // Array of { skillId, confidence }
+    const userSkills = Array.isArray(body.userSkills) ? body.userSkills : [];
+    const userSkillNames = Array.isArray(body.userSkillNames) ? body.userSkillNames : [];
 
     // Get all jobs with their required skills
     const jobs = await db.job.findMany({
@@ -26,7 +27,12 @@ export async function POST(request: NextRequest) {
       let weightedScore = 0;
 
       const skillMatches = requiredSkills.map(js => {
-        const userSkill = userSkills.find((us: { skillId: string; confidence: number }) => us.skillId === js.skillId);
+        const fromId = userSkills.find((us: { skillId: string; confidence: number }) => us.skillId === js.skillId);
+        const fromName = userSkillNames.find(
+          (us: { name: string; confidence: number }) =>
+            typeof us.name === "string" && us.name.toLowerCase().trim() === js.skill.name.toLowerCase().trim()
+        );
+        const userSkill = fromId ?? fromName;
         const hasSkill = !!userSkill;
         const confidence = userSkill?.confidence || 0;
         

@@ -20,15 +20,12 @@ const getPreferredTheme = (): Theme => {
 }
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>('light')
-  const [mounted, setMounted] = useState(false)
+  const [theme, setThemeState] = useState<Theme>(() => getPreferredTheme())
+  const mounted = true
 
   useEffect(() => {
-    const initialTheme = getPreferredTheme()
-    document.documentElement.classList.toggle('dark', initialTheme === 'dark')
-    setThemeState(initialTheme)
-    setMounted(true)
-  }, [])
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+  }, [theme])
 
   const setTheme = (nextTheme: Theme) => {
     setThemeState(nextTheme)

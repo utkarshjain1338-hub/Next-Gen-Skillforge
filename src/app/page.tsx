@@ -1,115 +1,105 @@
-'use client'
+ 'use client'
 
-import { useState } from 'react'
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
 import { useTheme } from '@/hooks/use-theme'
-import { 
-  ArrowRight,
-  CheckCircle2,
-  XCircle,
-  Brain, 
-  Briefcase, 
-  Network,
-  BarChart3,
+import { useToast } from '@/hooks/use-toast'
+import {
   BookOpen,
-  User,
-  Upload,
-  Github,
+  Briefcase,
+  CheckCircle2,
   FileText,
-  Plus,
-  Minus,
-  Target,
-  Sparkles,
+  Github,
   Menu,
-  X,
   Moon,
-  Sun
+  Network,
+  Plus,
+  Sparkles,
+  Sun,
+  Target,
+  Upload,
+  User,
+  X,
 } from 'lucide-react'
+import { PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer } from 'recharts'
 
-// Sample Data
-const ALL_SKILLS = [
-  { id: 1, name: 'JavaScript', category: 'Frontend' },
-  { id: 2, name: 'Python', category: 'Backend' },
+type SkillSource = 'manual' | 'resume' | 'github' | 'assessment'
+type UserSkill = { skill: string; confidence: number; source: SkillSource }
+type SkillCatalogItem = { id: number; name: string; category: string }
+type JobItem = {
+  id: number
+  title: string
+  company: string
+  location: string
+  salary: string
+  requiredSkills: string[]
+  preferredSkills: string[]
+}
+
+const FALLBACK_SKILLS: SkillCatalogItem[] = [
+  { id: 1, name: 'JavaScript', category: 'Programming' },
+  { id: 2, name: 'TypeScript', category: 'Programming' },
   { id: 3, name: 'React', category: 'Frontend' },
   { id: 4, name: 'Node.js', category: 'Backend' },
-  { id: 5, name: 'TypeScript', category: 'Frontend' },
+  { id: 5, name: 'Python', category: 'Programming' },
   { id: 6, name: 'SQL', category: 'Database' },
-  { id: 7, name: 'MongoDB', category: 'Database' },
-  { id: 8, name: 'AWS', category: 'Cloud' },
-  { id: 9, name: 'Docker', category: 'DevOps' },
-  { id: 10, name: 'Git', category: 'Tools' },
-  { id: 11, name: 'Machine Learning', category: 'AI/ML' },
-  { id: 12, name: 'TensorFlow', category: 'AI/ML' },
-  { id: 13, name: 'Java', category: 'Backend' },
-  { id: 14, name: 'C++', category: 'Backend' },
-  { id: 15, name: 'HTML/CSS', category: 'Frontend' },
+  { id: 7, name: 'AWS', category: 'Cloud' },
+  { id: 8, name: 'Docker', category: 'DevOps' },
+  { id: 9, name: 'Git', category: 'Tools' },
 ]
 
-const JOBS = [
-  {
-    id: 1,
-    title: 'Full Stack Developer',
-    company: 'TechCorp',
-    location: 'Remote',
-    salary: '$80k - $120k',
-    requiredSkills: ['JavaScript', 'React', 'Node.js', 'SQL', 'Git'],
-    preferredSkills: ['TypeScript', 'AWS', 'Docker']
-  },
-  {
-    id: 2,
-    title: 'Frontend Developer',
-    company: 'Design Studio',
-    location: 'New York',
-    salary: '$70k - $100k',
-    requiredSkills: ['JavaScript', 'React', 'HTML/CSS', 'Git'],
-    preferredSkills: ['TypeScript']
-  },
-  {
-    id: 3,
-    title: 'Machine Learning Engineer',
-    company: 'AI Startup',
-    location: 'San Francisco',
-    salary: '$120k - $180k',
-    requiredSkills: ['Python', 'Machine Learning', 'TensorFlow', 'SQL'],
-    preferredSkills: ['Docker', 'AWS']
-  },
-  {
-    id: 4,
-    title: 'Backend Engineer',
-    company: 'FinTech Inc',
-    location: 'London',
-    salary: '$90k - $130k',
-    requiredSkills: ['Python', 'Node.js', 'SQL', 'MongoDB', 'Docker'],
-    preferredSkills: ['AWS', 'Java']
-  },
-  {
-    id: 5,
-    title: 'DevOps Engineer',
-    company: 'Cloud Solutions',
-    location: 'Remote',
-    salary: '$100k - $150k',
-    requiredSkills: ['Docker', 'AWS', 'Python', 'Git'],
-    preferredSkills: ['Kubernetes', 'Terraform']
-  }
+const FALLBACK_JOBS: JobItem[] = [
+  { id: 1, title: 'Full Stack Developer', company: 'TechCorp', location: 'Remote', salary: '$80k - $120k', requiredSkills: ['JavaScript', 'React', 'Node.js', 'SQL', 'Git'], preferredSkills: ['TypeScript', 'AWS', 'Docker'] },
+  { id: 2, title: 'Frontend Developer', company: 'Design Studio', location: 'New York', salary: '$70k - $100k', requiredSkills: ['JavaScript', 'React', 'Git'], preferredSkills: ['TypeScript'] },
+  { id: 3, title: 'Backend Engineer', company: 'FinTech Inc', location: 'London', salary: '$90k - $130k', requiredSkills: ['Python', 'Node.js', 'SQL', 'Docker'], preferredSkills: ['AWS'] },
 ]
 
 const LEARNING_RESOURCES = [
   { skill: 'TypeScript', title: 'TypeScript Fundamentals', platform: 'Coursera', duration: '2 weeks', level: 'Beginner' },
   { skill: 'AWS', title: 'AWS Certified Developer', platform: 'Udemy', duration: '4 weeks', level: 'Intermediate' },
   { skill: 'Docker', title: 'Docker Mastery', platform: 'Udemy', duration: '2 weeks', level: 'Beginner' },
-  { skill: 'Machine Learning', title: 'ML Specialization', platform: 'Coursera', duration: '8 weeks', level: 'Intermediate' },
-  { skill: 'TensorFlow', title: 'TensorFlow Developer', platform: 'Coursera', duration: '6 weeks', level: 'Intermediate' },
+  { skill: 'Python', title: 'Python for Everybody', platform: 'Coursera', duration: '3 weeks', level: 'Beginner' },
   { skill: 'Node.js', title: 'Node.js Complete Guide', platform: 'Udemy', duration: '3 weeks', level: 'Beginner' },
-  { skill: 'MongoDB', title: 'MongoDB Basics', platform: 'MongoDB University', duration: '2 weeks', level: 'Beginner' },
   { skill: 'React', title: 'React - The Complete Guide', platform: 'Udemy', duration: '4 weeks', level: 'Beginner' },
 ]
+
+const LANGUAGE_TO_SKILLS: Record<string, string[]> = {
+  JavaScript: ['JavaScript', 'Node.js', 'React'],
+  TypeScript: ['TypeScript', 'JavaScript', 'React'],
+  Python: ['Python'],
+  HTML: ['HTML/CSS'],
+  CSS: ['HTML/CSS'],
+  Go: ['Go'],
+  Java: ['Java'],
+  'C++': ['C++'],
+  Shell: ['Linux', 'DevOps'],
+  Dockerfile: ['Docker'],
+}
+
+const normalize = (v: string) => v.toLowerCase().trim()
+
+function mergeSkills(current: UserSkill[], incoming: UserSkill[]): UserSkill[] {
+  const map = new Map<string, UserSkill>()
+  for (const s of current) map.set(normalize(s.skill), s)
+  for (const s of incoming) {
+    const key = normalize(s.skill)
+    const existing = map.get(key)
+    if (!existing) {
+      map.set(key, s)
+      continue
+    }
+    map.set(key, {
+      ...existing,
+      confidence: Math.max(existing.confidence, s.confidence),
+      source: s.source === 'manual' ? existing.source : s.source,
+    })
+  }
+  return Array.from(map.values()).sort((a, b) => a.skill.localeCompare(b.skill))
+}
 
 // Navigation
 function Navigation({ theme, toggleTheme, mounted }: { theme: 'light' | 'dark'; toggleTheme: () => void; mounted: boolean }) {
@@ -172,10 +162,18 @@ function Navigation({ theme, toggleTheme, mounted }: { theme: 'light' | 'dark'; 
 // Skill Input Section
 function SkillInputSection({ 
   userSkills, 
-  setUserSkills 
+  onUserSkillsChange,
+  allSkills,
+  onResumeUpload,
+  onGithubImport,
+  onAssessment
 }: { 
-  userSkills: { skill: string; confidence: number; source: string }[]
-  setUserSkills: (skills: { skill: string; confidence: number; source: string }[]) => void 
+  userSkills: UserSkill[]
+  onUserSkillsChange: (skills: UserSkill[]) => void
+  allSkills: SkillCatalogItem[]
+  onResumeUpload: () => void
+  onGithubImport: () => void
+  onAssessment: () => void
 }) {
   const [selectedSkill, setSelectedSkill] = useState('')
   const [confidence, setConfidence] = useState(50)
@@ -185,13 +183,13 @@ function SkillInputSection({
     if (!selectedSkill) return
     if (userSkills.find(s => s.skill === selectedSkill)) return
     
-    setUserSkills([...userSkills, { skill: selectedSkill, confidence: confidence / 100, source }])
+    onUserSkillsChange([...userSkills, { skill: selectedSkill, confidence: confidence / 100, source: source as SkillSource }])
     setSelectedSkill('')
     setConfidence(50)
   }
 
   const removeSkill = (skillName: string) => {
-    setUserSkills(userSkills.filter(s => s.skill !== skillName))
+    onUserSkillsChange(userSkills.filter(s => s.skill !== skillName))
   }
 
   const getConfidenceColor = (conf: number) => {
@@ -209,11 +207,11 @@ function SkillInputSection({
     }
   }
 
-  const skillsByCategory = ALL_SKILLS.reduce((acc, skill) => {
+  const skillsByCategory = allSkills.reduce((acc, skill) => {
     if (!acc[skill.category]) acc[skill.category] = []
     acc[skill.category].push(skill)
     return acc
-  }, {} as Record<string, typeof ALL_SKILLS>)
+  }, {} as Record<string, SkillCatalogItem[]>)
 
   return (
     <section id="skills" className="py-8">
@@ -228,15 +226,15 @@ function SkillInputSection({
         <CardContent className="space-y-6">
           {/* Data Input Buttons */}
           <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={onResumeUpload}>
               <Upload className="w-4 h-4 mr-2" />
               Upload Resume
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={onGithubImport}>
               <Github className="w-4 h-4 mr-2" />
               Connect GitHub
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={onAssessment}>
               <FileText className="w-4 h-4 mr-2" />
               Take Assessment
             </Button>
@@ -327,16 +325,21 @@ function SkillInputSection({
 
 // Job Matching Section
 function JobMatchingSection({ 
-  userSkills 
+  userSkills, jobs, matches
 }: { 
-  userSkills: { skill: string; confidence: number; source: string }[] 
+  userSkills: UserSkill[]
+  jobs: JobItem[]
+  matches: Array<{ title: string; matchScore: number }>
 }) {
-  const calculateMatch = (job: typeof JOBS[0]) => {
+  const calculateMatch = (job: JobItem) => {
+    const apiMatch = matches.find((m) => m.title === job.title)
+    if (apiMatch) return apiMatch.matchScore
     const userSkillNames = userSkills.map(s => s.skill)
+    const requiredPool = job.requiredSkills.length > 0 ? job.requiredSkills : job.preferredSkills
     
     // Required skills match
-    const requiredMatch = job.requiredSkills.filter(s => userSkillNames.includes(s)).length
-    const requiredScore = (requiredMatch / job.requiredSkills.length) * 70
+    const requiredMatch = requiredPool.filter(s => userSkillNames.includes(s)).length
+    const requiredScore = requiredPool.length > 0 ? (requiredMatch / requiredPool.length) * 70 : 0
     
     // Preferred skills match
     const preferredMatch = job.preferredSkills.filter(s => userSkillNames.includes(s)).length
@@ -359,7 +362,7 @@ function JobMatchingSection({
     return 'text-red-700 bg-red-100 dark:text-red-200 dark:bg-red-900/40'
   }
 
-  const sortedJobs = [...JOBS].sort((a, b) => calculateMatch(b) - calculateMatch(a))
+  const sortedJobs = [...jobs].sort((a, b) => calculateMatch(b) - calculateMatch(a))
 
   return (
     <section id="matching" className="py-8">
@@ -422,9 +425,11 @@ function JobMatchingSection({
 
 // Skill Gap Analysis Section
 function SkillGapSection({ 
-  userSkills 
+  userSkills, jobs, matchGaps
 }: { 
-  userSkills: { skill: string; confidence: number; source: string }[] 
+  userSkills: UserSkill[]
+  jobs: JobItem[]
+  matchGaps: string[]
 }) {
   const userSkillNames = userSkills.map(s => s.skill)
   
@@ -432,7 +437,7 @@ function SkillGapSection({
   const getMissingSkills = () => {
     const missingMap = new Map<string, { count: number; jobs: string[] }>()
     
-    JOBS.forEach(job => {
+    jobs.forEach(job => {
       [...job.requiredSkills, ...job.preferredSkills].forEach(skill => {
         if (!userSkillNames.includes(skill)) {
           const existing = missingMap.get(skill)
@@ -451,7 +456,9 @@ function SkillGapSection({
       .sort((a, b) => b.count - a.count)
   }
 
-  const missingSkills = getMissingSkills()
+  const missingSkills = matchGaps.length > 0
+    ? getMissingSkills().filter((x) => matchGaps.includes(x.skill))
+    : getMissingSkills()
 
   return (
     <section id="gaps" className="py-8">
@@ -502,16 +509,18 @@ function SkillGapSection({
 
 // Learning Path Section
 function LearningPathSection({ 
-  userSkills 
+  userSkills, jobs, prioritizedSkills
 }: { 
-  userSkills: { skill: string; confidence: number; source: string }[] 
+  userSkills: UserSkill[]
+  jobs: JobItem[]
+  prioritizedSkills: string[]
 }) {
   const userSkillNames = userSkills.map(s => s.skill)
   
   const getRecommendedLearning = () => {
     const missingSkills = new Set<string>()
     
-    JOBS.forEach(job => {
+    jobs.forEach(job => {
       job.requiredSkills.forEach(skill => {
         if (!userSkillNames.includes(skill)) {
           missingSkills.add(skill)
@@ -519,10 +528,16 @@ function LearningPathSection({
       })
     })
     
-    return LEARNING_RESOURCES.filter(resource => missingSkills.has(resource.skill))
+    const base = LEARNING_RESOURCES.filter(resource => missingSkills.has(resource.skill))
+    if (prioritizedSkills.length === 0) return base
+    return base.sort((a, b) => prioritizedSkills.indexOf(a.skill) - prioritizedSkills.indexOf(b.skill))
   }
 
-  const recommendedLearning = getRecommendedLearning()
+  const urgentLearning = getRecommendedLearning().slice(0, 4)
+  const urgentSkillSet = new Set(urgentLearning.map((c) => c.skill))
+  const futureLearning = LEARNING_RESOURCES
+    .filter((resource) => !urgentSkillSet.has(resource.skill))
+    .slice(0, 4)
 
   return (
     <section id="learning" className="py-8">
@@ -537,27 +552,59 @@ function LearningPathSection({
         <CardContent>
           {userSkills.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-300 text-center py-8">Add your skills to get learning recommendations</p>
-          ) : recommendedLearning.length === 0 ? (
-            <div className="text-center py-8">
-              <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
-              <p className="text-green-600 font-medium">You're all set! No urgent learning needed.</p>
-            </div>
           ) : (
-            <div className="space-y-3">
-              {recommendedLearning.map((course, i) => (
-                <div key={i} className="flex items-center gap-4 p-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-lg transition-colors">
-                  <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200 flex items-center justify-center font-bold text-sm">
-                    {i + 1}
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-medium text-sm text-gray-900 dark:text-gray-100">{course.title}</h4>
-                    <p className="text-xs text-gray-600 dark:text-gray-300">
-                      {course.platform} • {course.duration} • {course.level}
-                    </p>
-                  </div>
-                  <Badge variant="outline">{course.skill}</Badge>
+            <div className="space-y-5">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-red-700 dark:text-red-300">Urgent (close critical gaps)</p>
+                  <Badge variant="destructive">{urgentLearning.length} items</Badge>
                 </div>
-              ))}
+                {urgentLearning.length === 0 ? (
+                  <div className="text-center py-6 border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto mb-2" />
+                    <p className="text-green-600 font-medium text-sm">No urgent gaps found right now.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {urgentLearning.map((course, i) => (
+                      <div key={`u-${i}`} className="flex items-center gap-4 p-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-lg transition-colors">
+                        <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-200 flex items-center justify-center font-bold text-sm">
+                          {i + 1}
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-medium text-sm text-gray-900 dark:text-gray-100">{course.title}</h4>
+                          <p className="text-xs text-gray-600 dark:text-gray-300">
+                            {course.platform} • {course.duration} • {course.level}
+                          </p>
+                        </div>
+                        <Badge variant="outline">{course.skill}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Future (growth roadmap)</p>
+                  <Badge variant="secondary">{futureLearning.length} items</Badge>
+                </div>
+                <div className="space-y-2">
+                  {futureLearning.map((course, i) => (
+                    <div key={`f-${i}`} className="flex items-center gap-4 p-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-lg transition-colors">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 flex items-center justify-center font-bold text-sm">
+                        {i + 1}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium text-sm text-gray-900 dark:text-gray-100">{course.title}</h4>
+                        <p className="text-xs text-gray-600 dark:text-gray-300">
+                          {course.platform} • {course.duration} • {course.level}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{course.skill}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </CardContent>
@@ -566,88 +613,102 @@ function LearningPathSection({
   )
 }
 
-// Skill Graph Visualization
-function SkillGraphSection({ 
-  userSkills 
-}: { 
-  userSkills: { skill: string; confidence: number; source: string }[] 
-}) {
-  const userSkillNames = userSkills.map(s => s.skill)
-  
+// Skill Spider Analysis
+function SkillGraphSection({ userSkills, jobs }: { userSkills: UserSkill[]; jobs: JobItem[] }) {
+  const categoryRadar = useMemo(() => {
+    const categories = ['Frontend', 'Backend', 'Programming', 'Database', 'Cloud', 'DevOps', 'AI/ML', 'Tools']
+    return categories.map((category) => {
+      const related = userSkills.filter((s) => {
+        const skillCategory = FALLBACK_SKILLS.find((k) => normalize(k.name) === normalize(s.skill))?.category ?? 'Programming'
+        return skillCategory === category
+      })
+      return {
+        metric: category,
+        score: Math.round((related.reduce((acc, item) => acc + item.confidence, 0) / Math.max(1, related.length)) * 100),
+        max: 100,
+      }
+    })
+  }, [userSkills])
+
+  const topJob = useMemo(() => {
+    if (jobs.length === 0) return null
+    return jobs[0]
+  }, [jobs])
+
+  const readinessRadar = useMemo(() => {
+    if (!topJob) return []
+    const skillNames = userSkills.map((x) => normalize(x.skill))
+    return topJob.requiredSkills.slice(0, 6).map((skill) => ({
+      metric: skill,
+      score: skillNames.includes(normalize(skill))
+        ? Math.round((userSkills.find((x) => normalize(x.skill) === normalize(skill))?.confidence ?? 0.6) * 100)
+        : 10,
+      max: 100,
+    }))
+  }, [topJob, userSkills])
+
+  const marketRadar = useMemo(() => {
+    const demand = new Map<string, number>()
+    for (const job of jobs) {
+      for (const skill of [...job.requiredSkills, ...job.preferredSkills]) {
+        demand.set(skill, (demand.get(skill) ?? 0) + 1)
+      }
+    }
+    const skillNames = userSkills.map((x) => normalize(x.skill))
+    return Array.from(demand.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([skill, hits]) => ({
+        metric: skill,
+        demand: Math.min(100, hits * 20),
+        user: skillNames.includes(normalize(skill))
+          ? Math.round((userSkills.find((x) => normalize(x.skill) === normalize(skill))?.confidence ?? 0.7) * 100)
+          : 5,
+      }))
+  }, [jobs, userSkills])
+
   return (
     <section className="py-8">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Network className="w-5 h-5" />
-            Skill Graph
+            Skill Spider Analysis
           </CardTitle>
-          <CardDescription>Visual representation of your skill connections</CardDescription>
+          <CardDescription>Radar charts for strengths, job readiness, and market demand alignment</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 h-64 relative overflow-hidden transition-colors">
-            <svg className="w-full h-full" viewBox="0 0 500 220">
-              {/* Center - User */}
-              <circle cx="250" cy="110" r="30" fill="#059669" />
-              <text x="250" y="115" textAnchor="middle" fill="white" fontSize="12" fontWeight="bold">YOU</text>
-              
-              {/* Skill nodes */}
-              {userSkills.slice(0, 6).map((s, i) => {
-                const angle = (i / 6) * 2 * Math.PI - Math.PI / 2
-                const x = 250 + 80 * Math.cos(angle)
-                const y = 110 + 70 * Math.sin(angle)
-                
-                return (
-                  <g key={i}>
-                    <line x1="250" y1="110" x2={x} y2={y} stroke="#d1d5db" strokeWidth="2" />
-                    <circle cx={x} cy={y} r="25" fill={s.confidence > 0.6 ? '#3b82f6' : '#9ca3af'} />
-                    <text x={x} y={y + 4} textAnchor="middle" fill="white" fontSize="9">
-                      {s.skill.length > 10 ? s.skill.slice(0, 8) + '..' : s.skill}
-                    </text>
-                  </g>
-                )
-              })}
-              
-              {/* Job nodes */}
-              {JOBS.slice(0, 3).map((job, i) => {
-                const x = 450
-                const y = 50 + i * 60
-                
-                return (
-                  <g key={i}>
-                    <line x1="280" y1="110" x2={x} y2={y} stroke="#d1d5db" strokeWidth="1" strokeDasharray="4" />
-                    <circle cx={x} cy={y} r="20" fill="#8b5cf6" />
-                    <text x={x} y={y + 4} textAnchor="middle" fill="white" fontSize="7">
-                      {job.title.split(' ')[0]}
-                    </text>
-                  </g>
-                )
-              })}
-            </svg>
-            
-            {userSkills.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-950/80">
-                <p className="text-gray-500 dark:text-gray-300">Add skills to see graph</p>
-              </div>
-            )}
-          </div>
-          
-          <div className="flex justify-center gap-6 mt-4 text-xs text-gray-700 dark:text-gray-200">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-emerald-600" />
-              <span>User</span>
+          <div className="grid md:grid-cols-3 gap-3">
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 h-64">
+              <p className="text-xs mb-2 text-gray-600 dark:text-gray-300">Category confidence</p>
+              <ResponsiveContainer width="100%" height="90%">
+                <RadarChart data={categoryRadar}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="metric" tick={{ fontSize: 10 }} />
+                  <Radar dataKey="score" fill="#10b981" fillOpacity={0.35} stroke="#10b981" />
+                </RadarChart>
+              </ResponsiveContainer>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-blue-500" />
-              <span>Skills (High confidence)</span>
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 h-64">
+              <p className="text-xs mb-2 text-gray-600 dark:text-gray-300">Top-role readiness</p>
+              <ResponsiveContainer width="100%" height="90%">
+                <RadarChart data={readinessRadar}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="metric" tick={{ fontSize: 10 }} />
+                  <Radar dataKey="score" fill="#3b82f6" fillOpacity={0.3} stroke="#3b82f6" />
+                </RadarChart>
+              </ResponsiveContainer>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-gray-400" />
-              <span>Skills (Low confidence)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-purple-500" />
-              <span>Jobs</span>
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 h-64">
+              <p className="text-xs mb-2 text-gray-600 dark:text-gray-300">Demand vs your confidence</p>
+              <ResponsiveContainer width="100%" height="90%">
+                <RadarChart data={marketRadar}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="metric" tick={{ fontSize: 10 }} />
+                  <Radar dataKey="demand" fill="#8b5cf6" fillOpacity={0.2} stroke="#8b5cf6" />
+                  <Radar dataKey="user" fill="#f59e0b" fillOpacity={0.22} stroke="#f59e0b" />
+                </RadarChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </CardContent>
@@ -656,47 +717,214 @@ function SkillGraphSection({
   )
 }
 
-// Team Section
-function TeamSection() {
-  const team = [
-    { name: 'Divyansh Meena', role: 'Frontend & DevOps', college: 'Oriental College of Technology' },
-    { name: 'Piyush Baraskar', role: 'Machine Learning', college: 'Technocrats Institute of Technology' },
-    { name: 'Utkarsh Jain', role: 'ML/Graph Intelligence', college: 'Technocrats Institute of Technology' },
-    { name: 'Vishal Vishwakarma', role: 'Backend (API)', college: 'Technocrats Institute of Technology' },
-    { name: 'Ratnesh Amule', role: 'Database & Presenter', college: 'Oriental College of Technology' }
-  ]
-
-  return (
-    <section className="py-8 border-t border-gray-200 dark:border-gray-800">
-      <div className="text-center mb-6">
-        <Badge variant="outline" className="mb-2">NEXT GEN BUILDERS</Badge>
-        <h2 className="text-xl font-bold">Our Team</h2>
-      </div>
-      <div className="flex flex-wrap justify-center gap-4">
-        {team.map((member, i) => (
-          <div key={i} className="text-center p-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-lg w-36 transition-colors">
-            <div className="w-10 h-10 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-700 dark:text-emerald-200 font-bold text-sm mb-2">
-              {member.name.split(' ').map(n => n[0]).join('')}
-            </div>
-            <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{member.name}</p>
-            <p className="text-xs text-emerald-600">{member.role}</p>
-            <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">{member.college}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
 // Main Page
 export default function Home() {
   const { theme, toggleTheme, mounted } = useTheme()
-  const [userSkills, setUserSkills] = useState<{ skill: string; confidence: number; source: string }[]>([
+  const { toast } = useToast()
+  const resumeInputRef = useRef<HTMLInputElement>(null)
+  const [userSkills, setUserSkills] = useState<UserSkill[]>([
     { skill: 'JavaScript', confidence: 0.8, source: 'github' },
     { skill: 'React', confidence: 0.7, source: 'manual' },
     { skill: 'Python', confidence: 0.5, source: 'resume' },
     { skill: 'Git', confidence: 0.9, source: 'github' },
   ])
+  const [skillsCatalog, setSkillsCatalog] = useState<SkillCatalogItem[]>(FALLBACK_SKILLS)
+  const [jobs, setJobs] = useState<JobItem[]>(FALLBACK_JOBS)
+  const [matches, setMatches] = useState<Array<{ title: string; matchScore: number; gaps: string[] }>>([])
+  const [loadingData, setLoadingData] = useState(true)
+  const [apiError, setApiError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const ensureDemoData = async () => {
+      try {
+        await fetch('/api/demo')
+      } catch {
+        // silent fallback
+      }
+    }
+
+    const fetchPlatformData = async () => {
+      try {
+        await ensureDemoData()
+        const [skillsRes, jobsRes] = await Promise.all([
+          fetch('/api/skills'),
+          fetch('/api/jobs')
+        ])
+
+        if (!skillsRes.ok || !jobsRes.ok) {
+          throw new Error('API request failed')
+        }
+
+        const [skillsData, jobsData] = await Promise.all([
+          skillsRes.json(),
+          jobsRes.json()
+        ])
+
+        if (Array.isArray(skillsData.skills) && skillsData.skills.length > 0) {
+          const mappedSkills: SkillCatalogItem[] = skillsData.skills.map(
+            (skill: { id: string; name: string; category?: string | null }, idx: number) => ({
+              id: idx + 1,
+              name: skill.name,
+              category: skill.category || 'General'
+            })
+          )
+          setSkillsCatalog(mappedSkills)
+        }
+
+        if (Array.isArray(jobsData.jobs) && jobsData.jobs.length > 0) {
+          const mappedJobs: JobItem[] = jobsData.jobs.map(
+            (
+              job: {
+                title: string
+                company?: string | null
+                location?: string | null
+                salary?: string | null
+                jobSkills?: Array<{ required?: boolean; skill?: { name?: string } }>
+              },
+              idx: number
+            ) => ({
+              id: idx + 1,
+              title: job.title,
+              company: job.company || 'Unknown Company',
+              location: job.location || 'Not specified',
+              salary: job.salary || 'Not disclosed',
+              requiredSkills: (job.jobSkills || [])
+                .filter((js) => js.required !== false && js.skill?.name)
+                .map((js) => js.skill!.name!),
+              preferredSkills: (job.jobSkills || [])
+                .filter((js) => js.required === false && js.skill?.name)
+                .map((js) => js.skill!.name!)
+            })
+          )
+          setJobs(mappedJobs)
+        }
+      } catch {
+        setApiError('Showing demo data. API data is currently unavailable.')
+      } finally {
+        setLoadingData(false)
+      }
+    }
+
+    void fetchPlatformData()
+  }, [])
+
+  useEffect(() => {
+    const runMatch = async () => {
+      if (userSkills.length === 0) {
+        setMatches([])
+        return
+      }
+      try {
+        const payload = {
+          userSkillNames: userSkills.map((s) => ({ name: s.skill, confidence: s.confidence })),
+        }
+        const res = await fetch('/api/match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (Array.isArray(data.matches)) {
+          setMatches(
+            data.matches.map((m: { job: { title: string }; matchScore: number; gaps: Array<{ skillName: string }> }) => ({
+              title: m.job.title,
+              matchScore: m.matchScore,
+              gaps: (m.gaps || []).map((x) => x.skillName),
+            }))
+          )
+        }
+      } catch {
+        // no-op fallback
+      }
+    }
+    void runMatch()
+  }, [userSkills, jobs])
+
+  const extractSkillCandidates = (text: string): string[] => {
+    const dict = skillsCatalog.map((s) => s.name)
+    const lower = text.toLowerCase()
+    return dict.filter((skill) => lower.includes(skill.toLowerCase()))
+  }
+
+  const handleResumeUploadClick = () => resumeInputRef.current?.click()
+
+  const onResumeFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const text = await file.text()
+    const extracted = extractSkillCandidates(text).map((name) => ({
+      skill: name,
+      confidence: 0.65,
+      source: 'resume' as const,
+    }))
+    if (extracted.length === 0) {
+      toast({ title: 'No known skills found', description: 'Try a resume text file with explicit skill names.' })
+      return
+    }
+    setUserSkills((prev) => mergeSkills(prev, extracted))
+    toast({ title: 'Resume parsed', description: `Imported ${extracted.length} skills from resume file.` })
+    event.target.value = ''
+  }
+
+  const handleGithubImport = async () => {
+    const username = window.prompt('Enter your GitHub username')
+    if (!username) return
+    try {
+      const reposRes = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100`)
+      if (!reposRes.ok) throw new Error('GitHub request failed')
+      const repos = (await reposRes.json()) as Array<{ language: string | null }>
+      const merged: UserSkill[] = []
+      const seen = new Set<string>()
+      for (const repo of repos) {
+        const lang = repo.language
+        if (!lang) continue
+        const mapped = LANGUAGE_TO_SKILLS[lang] ?? [lang]
+        for (const skill of mapped) {
+          const key = normalize(skill)
+          if (seen.has(key)) continue
+          seen.add(key)
+          merged.push({ skill, confidence: 0.72, source: 'github' })
+        }
+      }
+      if (merged.length === 0) {
+        toast({ title: 'No skills imported', description: 'No recognizable languages found in public repositories.' })
+        return
+      }
+      setUserSkills((prev) => mergeSkills(prev, merged))
+      toast({ title: 'GitHub connected', description: `Imported ${merged.length} skills from ${username}.` })
+    } catch {
+      toast({ title: 'GitHub import failed', description: 'Could not fetch public repositories right now.' })
+    }
+  }
+
+  const handleAssessment = () => {
+    const existing = new Set(userSkills.map((s) => normalize(s.skill)))
+    const missingTop = jobs
+      .flatMap((j) => j.requiredSkills)
+      .filter((s, i, arr) => arr.findIndex((x) => normalize(x) === normalize(s)) === i)
+      .filter((s) => !existing.has(normalize(s)))
+      .slice(0, 4)
+      .map((skill) => ({ skill, confidence: 0.58, source: 'assessment' as const }))
+    if (missingTop.length === 0) {
+      toast({ title: 'Assessment complete', description: 'You already cover the top required skills.' })
+      return
+    }
+    setUserSkills((prev) => mergeSkills(prev, missingTop))
+    toast({ title: 'Assessment complete', description: `${missingTop.length} validated skills added.` })
+  }
+
+  const computedSkillGaps = useMemo(() => {
+    const uniqueJobSkills = new Set(jobs.flatMap(job => [...job.requiredSkills, ...job.preferredSkills]))
+    return Math.max(0, uniqueJobSkills.size - userSkills.length)
+  }, [jobs, userSkills.length])
+
+  const prioritizedGaps = useMemo(() => {
+    const all = matches.flatMap((m) => m.gaps)
+    const count = new Map<string, number>()
+    for (const gap of all) count.set(gap, (count.get(gap) ?? 0) + 1)
+    return Array.from(count.entries()).sort((a, b) => b[1] - a[1]).map(([name]) => name)
+  }, [matches])
 
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
@@ -707,14 +935,20 @@ export default function Home() {
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">NXT-GEN SKILLFORGE</h1>
           <p className="text-gray-600 dark:text-gray-300 text-sm">Skill-intelligence platform for job matching & upskilling</p>
+          {loadingData && (
+            <p className="text-xs mt-2 text-emerald-600">Loading platform data...</p>
+          )}
+          {apiError && (
+            <p className="text-xs mt-2 text-amber-600">{apiError}</p>
+          )}
         </div>
 
         {/* Stats Bar */}
         <div className="grid grid-cols-4 gap-2 mb-6">
           {[
             { label: 'Your Skills', value: userSkills.length },
-            { label: 'Job Matches', value: userSkills.length > 0 ? JOBS.length : 0 },
-            { label: 'Skill Gaps', value: Math.max(0, 15 - userSkills.length) },
+              { label: 'Job Matches', value: userSkills.length > 0 ? jobs.length : 0 },
+              { label: 'Skill Gaps', value: computedSkillGaps },
             { label: 'Learning', value: userSkills.length > 0 ? 4 : 0 }
           ].map((stat, i) => (
             <div key={i} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-center transition-colors">
@@ -725,15 +959,21 @@ export default function Home() {
         </div>
 
         {/* Main Content */}
-        <SkillInputSection userSkills={userSkills} setUserSkills={setUserSkills} />
-        <SkillGraphSection userSkills={userSkills} />
-        <JobMatchingSection userSkills={userSkills} />
-        <SkillGapSection userSkills={userSkills} />
-        <LearningPathSection userSkills={userSkills} />
+        <SkillInputSection
+          userSkills={userSkills}
+          onUserSkillsChange={setUserSkills}
+          allSkills={skillsCatalog}
+          onResumeUpload={handleResumeUploadClick}
+          onGithubImport={handleGithubImport}
+          onAssessment={handleAssessment}
+        />
+        <input ref={resumeInputRef} type="file" accept=".txt,.md,.json" className="hidden" onChange={onResumeFileSelected} />
+        <SkillGraphSection userSkills={userSkills} jobs={jobs} />
+        <JobMatchingSection userSkills={userSkills} jobs={jobs} matches={matches} />
+        <SkillGapSection userSkills={userSkills} jobs={jobs} matchGaps={prioritizedGaps} />
+        <LearningPathSection userSkills={userSkills} jobs={jobs} prioritizedSkills={prioritizedGaps} />
         
         {/* Footer */}
-        <TeamSection />
-        
         <footer className="text-center py-6 text-sm text-gray-600 dark:text-gray-300 border-t border-gray-200 dark:border-gray-800 mt-8">
           © 2024 NXT-GEN SKILLFORGE - Next Gen Builders
         </footer>
