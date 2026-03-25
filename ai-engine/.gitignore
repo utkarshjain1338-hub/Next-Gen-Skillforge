@@ -1,0 +1,15 @@
+#Environments
+venv/
+env/
+
+#python cache
+__pychache__/
+*.py[cod]
+
+#Databases and Datasets
+*.db
+*.sqlite3
+neo4j_data/
+
+Environment Variables
+.env
