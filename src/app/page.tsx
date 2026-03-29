@@ -1,14 +1,9 @@
 'use client'
-
+import Link from "next/link"
+import { signIn, signOut, useSession } from "next-auth/react"
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { useTheme } from '@/hooks/use-theme'
-import { useToast } from '@/hooks/use-toast'
 import {
+  LogOut,
   BookOpen,
   Briefcase,
   CheckCircle2,
@@ -25,8 +20,17 @@ import {
   User,
   X,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { useTheme } from '@/hooks/use-theme'
+import { useToast } from '@/hooks/use-toast'
+
 import { PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer } from 'recharts'
-import { signIn, signOut, useSession } from "next-auth/react"
+
 
 type SkillSource = 'manual' | 'resume' | 'github' | 'assessment'
 type UserSkill = { skill: string; confidence: number; source: SkillSource }
@@ -101,9 +105,72 @@ function mergeSkills(current: UserSkill[], incoming: UserSkill[]): UserSkill[] {
   }
   return Array.from(map.values()).sort((a, b) => a.skill.localeCompare(b.skill))
 }
+// User Profile Dropdown Component
+function UserProfileDropdown({ session }: { session: any }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
+  // Close dropdown if user clicks anywhere outside of it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  if (!session?.user) return null
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-center w-9 h-9 rounded-full ring-2 ring-primary/20 hover:ring-primary/60 transition-all overflow-hidden"
+      >
+        {session.user.image ? (
+          <img
+            src={session.user.image}
+            alt="Profile"
+            className="w-full h-full object-cover"
+            // The referrerPolicy is CRITICAL for Google profile pictures to load properly!
+            referrerPolicy="no-referrer" 
+          />
+        ) : (
+          <div className="w-full h-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+            {session.user.name?.charAt(0) || "U"}
+          </div>
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-64 bg-card border border-border rounded-xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2">
+          <div className="px-4 py-3 border-b border-border mb-1 bg-muted/20">
+            <p className="text-sm font-semibold text-foreground truncate">{session.user.name}</p>
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{session.user.email}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[10px] uppercase font-bold tracking-wider bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                {session.user.provider || "User"}
+              </span>
+            </div>
+          </div>
+          <div className="p-1.5">
+            <button
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-500/10 rounded-md transition-colors font-medium"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 // Navigation
-function Navigation({ theme, toggleTheme, mounted }: { theme: 'light' | 'dark'; toggleTheme: () => void; mounted: boolean }) {
+function Navigation({ theme, toggleTheme, mounted, session }: { theme: 'light' | 'dark'; toggleTheme: () => void; mounted: boolean; session: any }) {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
@@ -120,29 +187,55 @@ function Navigation({ theme, toggleTheme, mounted }: { theme: 'light' | 'dark'; 
             <a href="#matching" className="text-muted-foreground hover:text-foreground transition-colors">Job Matching</a>
             <a href="#gaps" className="text-muted-foreground hover:text-foreground transition-colors">Skill Gaps</a>
             <a href="#learning" className="text-muted-foreground hover:text-foreground transition-colors">Learning Path</a>
+            
+            {/* Desktop Theme Toggle */}
             <Button
               variant="ghost"
               size="icon"
               onClick={toggleTheme}
-              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
               className="text-foreground hover:bg-muted transition-colors"
-            >
-              {mounted && theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+>
+              {/* Sun shows ONLY in dark mode */}
+              <Sun className="w-5 h-5 hidden dark:block" />
+  
+              {/* Moon shows ONLY in light mode */}
+              <Moon className="w-5 h-5 block dark:hidden" />
+  
+              <span className="sr-only">Toggle theme</span>
             </Button>
+            {session ? (
+    <UserProfileDropdown session={session} />
+  ) : (
+    <Link href="/login" className="text-sm font-medium text-primary hover:underline">
+      Log In
+    </Link>
+  )}
           </div>
 
           <div className="md:hidden flex items-center gap-1">
+            {/* Mobile Theme Toggle */}
             <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleTheme}
-              className="text-foreground hover:bg-muted transition-colors"
-            >
-              {mounted && theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </Button>
+  variant="ghost"
+  size="icon"
+  onClick={toggleTheme}
+  className="text-foreground hover:bg-muted transition-colors"
+>
+  <Sun className="w-5 h-5 hidden dark:block" />
+  <Moon className="w-5 h-5 block dark:hidden" />
+  <span className="sr-only">Toggle theme</span>
+</Button>
+            
+            {/* Mobile Menu Toggle */}
             <Button variant="ghost" size="icon" className="text-foreground hover:bg-muted" onClick={() => setIsOpen(!isOpen)}>
               {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </Button>
+            {session ? (
+    <UserProfileDropdown session={session} />
+  ) : (
+    <Link href="/login" className="text-sm font-medium text-primary hover:underline">
+      Log In
+    </Link>
+  )}
           </div>
         </div>
 
@@ -176,11 +269,64 @@ function SkillInputSection({
   onAssessment: () => void
 }) {
   const { data: session } = useSession()
+  const router = useRouter()
   const [selectedSkill, setSelectedSkill] = useState('')
   const [confidence, setConfidence] = useState(50)
   const [source, setSource] = useState('manual')
+  
+  // ---> ADD THESE TWO LINES RIGHT HERE <---
+  const [showGithubInput, setShowGithubInput] = useState(false)
+  const [customGithubHandle, setCustomGithubHandle] = useState("")
+  const [isFetching, setIsFetching] = useState(false)
+
+  const fetchGithubSkills = async (username: string) => {
+    if (!username) return;
+    setIsFetching(true);
+    try {
+      // 1. Ask GitHub for all public repositories for this user
+      const response = await fetch(`https://api.github.com/users/${username}/repos`);
+      if (!response.ok) throw new Error("User not found");
+      const repos = await response.json();
+
+      // 2. Extract the unique programming languages used in those repos
+      const languages = new Set<string>();
+      repos.forEach((repo: any) => {
+        if (repo.language) languages.add(repo.language);
+      });
+
+      // 3. Format them into your Next-Gen Skillforge skill objects
+      const newSkills = Array.from(languages).map(lang => ({
+        skill: lang,
+        confidence: 0.85, // 85% confidence since they actually wrote code in it
+        source: 'github' as const
+      }));
+
+      // 4. Prevent adding duplicates (if the skill is already on the screen)
+      const uniqueNewSkills = newSkills.filter(
+        ns => !userSkills.some(us => us.skill === ns.skill)
+      );
+
+      // 5. Update the UI!
+      if (uniqueNewSkills.length > 0) {
+        onUserSkillsChange([...userSkills, ...uniqueNewSkills]);
+      }
+      
+      // Close the input box and clear it
+      setShowGithubInput(false);
+      setCustomGithubHandle("");
+    } catch (error) {
+      alert("Could not find GitHub user or fetch repositories.");
+    } finally {
+      setIsFetching(false);
+    }
+  }
 
   const addSkill = () => {
+    if (!session) {
+      router.push('/login') 
+      return
+    }
+
     if (!selectedSkill) return
     if (userSkills.find(s => s.skill === selectedSkill)) return
     
@@ -231,28 +377,63 @@ function SkillInputSection({
               <Upload className="w-4 h-4 mr-2" />
               Upload Resume
             </Button>
-           {session ? (
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" onClick={onGithubImport} className="bg-green-900/20 text-green-400 border-green-800 hover:bg-green-900/40">
-              <Github className="w-4 h-4 mr-2" />
-              Import from {session?.user?.name}
-            </Button>
-            <Button 
-             variant="outline" 
-             size="sm" 
-             onClick={() => signOut()} 
-             className="px-2 text-muted-foreground hover:text-red-400 hover:bg-red-900/20 hover:border-red-900"
-             title="Disconnect GitHub"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => signIn("github")}>
-              <Github className="w-4 h-4 mr-2" />
-              Connect GitHub
-            </Button>
-          )}
+          
+            {session?.user?.provider === "github" ? (
+  // 1. User logged in with GitHub -> Show instant import button
+  <Button 
+    variant="outline" 
+    size="sm" 
+    disabled={isFetching} // <-- Disable while loading
+    className="text-green-500 border-green-500/50 bg-green-500/10 hover:bg-green-500/20"
+    onClick={() => fetchGithubSkills(session.user.githubHandle || "")} //<-- THE REAL CALL
+  >
+    <Github className="w-4 h-4 mr-2" />
+    {isFetching ? "Fetching..." : `Import from @${session.user.githubHandle}`}
+  </Button>
+
+) : showGithubInput ? (
+  // 2. User logged in with Google AND clicked the button -> Show Input Field
+  <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
+    <div className="relative">
+      <Github className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+      <input
+        type="text"
+        placeholder="GitHub Username"
+        className="h-9 w-40 pl-9 pr-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+        value={customGithubHandle}
+        onChange={(e) => setCustomGithubHandle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && customGithubHandle) {
+            console.log("Fetching skills for:", customGithubHandle)
+            // fetchGithubSkills(customGithubHandle)
+          }
+        }}
+      />
+    </div>
+    <Button 
+      size="sm" 
+      disabled={isFetching || !customGithubHandle} // <-- Disable while loading
+      onClick={() => fetchGithubSkills(customGithubHandle)} // <-- THE REAL CALL
+    >
+      {isFetching ? "..." : "Fetch"}
+    </Button>
+    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setShowGithubInput(false)}>
+      <X className="w-4 h-4" />
+    </Button>
+  </div>
+
+) : (
+  // 3. User logged in with Google -> Show standard button to open the input
+  <Button 
+    variant="outline" 
+    size="sm" 
+    onClick={() => setShowGithubInput(true)}
+    className="hover:text-foreground transition-colors"
+  >
+    <Github className="w-4 h-4 mr-2" />
+    Add GitHub to Import
+  </Button>
+)}
             <Button variant="outline" size="sm" onClick={onAssessment}>
               <FileText className="w-4 h-4 mr-2" />
               Take Assessment
@@ -739,7 +920,10 @@ export default function Home() {
   const { theme, toggleTheme, mounted } = useTheme()
   const { toast } = useToast()
   const { data: session } = useSession()
-  const resumeInputRef = useRef<HTMLInputElement>(null)
+  const router = useRouter()
+  
+  // 1. ALL State Variables MUST be up here
+  const [customGithubHandle, setCustomGithubHandle] = useState("")
   const [userSkills, setUserSkills] = useState<UserSkill[]>([
     { skill: 'JavaScript', confidence: 0.8, source: 'github' },
     { skill: 'React', confidence: 0.7, source: 'manual' },
@@ -751,7 +935,35 @@ export default function Home() {
   const [matches, setMatches] = useState<Array<{ title: string; matchScore: number; gaps: string[] }>>([])
   const [loadingData, setLoadingData] = useState(true)
   const [apiError, setApiError] = useState<string | null>(null)
+  const resumeInputRef = useRef<HTMLInputElement>(null)
 
+  // 2. The New Fast Theme Toggle
+  const handleThemeToggle = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark'
+    
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+    
+    localStorage.setItem('theme', newTheme)
+    
+    // Check if your hook uses toggleTheme or setTheme and use the correct one:
+    // If your useTheme hook returns toggleTheme(), use this:
+    toggleTheme(newTheme) 
+  }
+
+  // 3. Helper Functions
+  const requireAuth = (action: () => void) => {
+    if (!session) {
+      router.push('/login')
+      return
+    }
+    action()
+  }
+
+  // ... (Your existing useEffects for fetchPlatformData and runMatch go here, completely untouched)
   useEffect(() => {
     const ensureDemoData = async () => {
       try {
@@ -836,7 +1048,7 @@ export default function Home() {
         const payload = {
           userSkillNames: userSkills.map((s) => ({ name: s.skill, confidence: s.confidence })),
         }
-        const res = await fetch('/api/match', {
+        const res = await fetch('/api/graph-match', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -865,17 +1077,19 @@ export default function Home() {
     return dict.filter((skill) => lower.includes(skill.toLowerCase()))
   }
 
-  const handleResumeUploadClick = () => resumeInputRef.current?.click()
+  const handleResumeUploadClick = () => {
+    requireAuth(() => {
+      resumeInputRef.current?.click()
+    })
+  }
 
- const onResumeFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+  const onResumeFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
     
-    // Read the text from the uploaded file
     const text = await file.text()
     
     try {
-      // 1. Send the text to our Python AI Microservice
       const response = await fetch('http://127.0.0.1:8000/parse-resume', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -885,9 +1099,8 @@ export default function Home() {
       if (!response.ok) throw new Error('AI Engine failed to parse');
       
       const data = await response.json();
-      const extracted = data.skills; // This is the array from Python
+      const extracted = data.skills;
 
-      // 2. Check if AI actually found anything
       if (!extracted || extracted.length === 0) {
         toast({ 
           title: 'No skills found', 
@@ -896,10 +1109,8 @@ export default function Home() {
         return;
       }
       
-      // 3. Update state (Using setUserSkills to match your defined state)
       setUserSkills((prev) => {
         const combined = [...prev, ...extracted];
-        // Use a Map to filter duplicates by skill name
         return Array.from(new Map(combined.map(s => [s.skill.toLowerCase(), s])).values());
       });
 
@@ -920,11 +1131,10 @@ export default function Home() {
   }; 
 
   const handleGithubImport = async () => {
-    // We ask for the exact handle because the session name is a Display Name (e.g., "Divyan Shakya" instead of "divyanshakya966")
     const exactUsername = window.prompt("To scan your repositories, please enter your exact GitHub username :");
     
     if (!exactUsername) {
-      return // User cancelled the prompt
+      return 
     }
 
     try {
@@ -962,6 +1172,7 @@ export default function Home() {
   }
 
   const handleAssessment = () => {
+    requireAuth(() => {
     const existing = new Set(userSkills.map((s) => normalize(s.skill)))
     const missingTop = jobs
       .flatMap((j) => j.requiredSkills)
@@ -969,12 +1180,14 @@ export default function Home() {
       .filter((s) => !existing.has(normalize(s)))
       .slice(0, 4)
       .map((skill) => ({ skill, confidence: 0.58, source: 'assessment' as const }))
+      
     if (missingTop.length === 0) {
       toast({ title: 'Assessment complete', description: 'You already cover the top required skills.' })
       return
     }
     setUserSkills((prev) => mergeSkills(prev, missingTop))
     toast({ title: 'Assessment complete', description: `${missingTop.length} validated skills added.` })
+  })
   }
 
   const computedSkillGaps = useMemo(() => {
@@ -989,9 +1202,10 @@ export default function Home() {
     return Array.from(count.entries()).sort((a, b) => b[1] - a[1]).map(([name]) => name)
   }, [matches])
 
+  // 4. The ONLY Return Statement
   return (
     <main className="min-h-screen bg-background text-foreground transition-colors">
-      <Navigation theme={theme} toggleTheme={toggleTheme} mounted={mounted} />
+      <Navigation theme={theme as 'light' | 'dark'} toggleTheme={handleThemeToggle} mounted={mounted} session={session} />
       
       <div className="max-w-4xl mx-auto px-4 py-6">
         {/* Header */}

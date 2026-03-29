@@ -1,8 +1,9 @@
+import Script from "next/script";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
-import Providers from "@/components/Providers";
+import { Providers } from "@/components/Providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,7 +16,6 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  // ... (keep your existing metadata exactly as is)
   title: "NXT-GEN SKILLFORGE",
   description: "Skill-intelligence platform for job matching, gap analysis, and guided upskilling.",
   keywords: ["Skillforge", "job matching", "skills", "upskilling", "career intelligence", "Next.js"],
@@ -35,20 +35,33 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground transition-colors duration-200`}
-      >
-        {/* Wrap your children in the Providers component */}
+      {/* Hooked up your custom Geist fonts to the body! */}
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        
+        {/* FIX 1: Next.js Optimized Theme Script */}
+        <Script id="theme-switcher" strategy="beforeInteractive">
+          {`
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+              document.documentElement.classList.add('dark')
+            } else {
+              document.documentElement.classList.remove('dark')
+            }
+          `}
+        </Script>
+
+        {/* FIX 2: Wrapped the app in your Providers */}
         <Providers>
           {children}
-          <Toaster />
+          {/* Hooked up your Toaster so notifications work! */}
+          <Toaster /> 
         </Providers>
+        
       </body>
     </html>
-  );
+  )
 }

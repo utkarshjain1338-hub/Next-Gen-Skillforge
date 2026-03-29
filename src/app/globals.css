@@ -1,6 +1,17 @@
+@tailwind base;
 @import "tailwindcss";
 @import "tw-animate-css";
-
+body, 
+main,
+nav,
+section,
+[class*="bg-"], 
+[class*="border-"],
+[class*="text-"] {
+  transition-property: color, background-color, border-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
