@@ -15,6 +15,7 @@ import {
   Plus,
   Sparkles,
   Sun,
+  BrainCircuit,
   Target,
   Upload,
   User,
@@ -187,7 +188,10 @@ function Navigation({ theme, toggleTheme, mounted, session }: { theme: 'light' |
             <a href="#matching" className="text-muted-foreground hover:text-foreground transition-colors">Job Matching</a>
             <a href="#gaps" className="text-muted-foreground hover:text-foreground transition-colors">Skill Gaps</a>
             <a href="#learning" className="text-muted-foreground hover:text-foreground transition-colors">Learning Path</a>
-            
+            <Link href="/pathfinder" className="text-primary font-bold hover:text-primary/80 transition-colors flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-full">
+              <BrainCircuit className="w-4 h-4" />
+              AI Pathfinder
+            </Link>
             {/* Desktop Theme Toggle */}
             <Button
               variant="ghost"
@@ -245,7 +249,12 @@ function Navigation({ theme, toggleTheme, mounted, session }: { theme: 'light' |
             <a href="#matching" className="block py-1 text-muted-foreground hover:text-foreground">Job Matching</a>
             <a href="#gaps" className="block py-1 text-muted-foreground hover:text-foreground">Skill Gaps</a>
             <a href="#learning" className="block py-1 text-muted-foreground hover:text-foreground">Learning Path</a>
+            <Link href="/pathfinder" className="block py-1 text-primary font-bold flex items-center gap-2">
+              <BrainCircuit className="w-4 h-4" />
+              AI Pathfinder
+            </Link> 
           </div>
+
         )}
       </div>
     </nav>
@@ -803,6 +812,19 @@ function LearningPathSection({
                   ))}
                 </div>
               </div>
+              {/* ADD THIS CTA BANNER AT THE BOTTOM OF THE CARD */}
+              <div className="mt-8 pt-6 border-t border-border flex flex-col items-center text-center">
+                <BrainCircuit className="w-8 h-8 text-primary mb-2" />
+                <h4 className="font-bold text-foreground mb-1">Want a custom week-by-week plan?</h4>
+                <p className="text-xs text-muted-foreground mb-4 max-w-sm">
+                  Use our AI Engine to generate a highly personalized, dynamic learning syllabus based on your exact skill gaps.
+                </p>
+                <Link href="/pathfinder">
+                  <Button className="bg-primary text-primary-foreground hover:opacity-90 shadow-cyber-glow">
+                    Open AI Pathfinder
+                  </Button>
+                </Link>
+              </div>
             </div>
           )}
         </CardContent>
@@ -949,9 +971,8 @@ export default function Home() {
     
     localStorage.setItem('theme', newTheme)
     
-    // Check if your hook uses toggleTheme or setTheme and use the correct one:
-    // If your useTheme hook returns toggleTheme(), use this:
-    toggleTheme(newTheme) 
+    // REMOVE 'newTheme' from the parentheses below
+    toggleTheme() 
   }
 
   // 3. Helper Functions
@@ -975,65 +996,30 @@ export default function Home() {
 
     const fetchPlatformData = async () => {
       try {
-        await ensureDemoData()
-        const [skillsRes, jobsRes] = await Promise.all([
-          fetch('/api/skills'),
-          fetch('/api/jobs')
-        ])
-
-        if (!skillsRes.ok || !jobsRes.ok) {
-          throw new Error('API request failed')
-        }
-
-        const [skillsData, jobsData] = await Promise.all([
-          skillsRes.json(),
-          jobsRes.json()
-        ])
-
-        if (Array.isArray(skillsData.skills) && skillsData.skills.length > 0) {
-          const mappedSkills: SkillCatalogItem[] = skillsData.skills.map(
-            (skill: { id: string; name: string; category?: string | null }, idx: number) => ({
-              id: idx + 1,
-              name: skill.name,
-              category: skill.category || 'General'
-            })
-          )
-          setSkillsCatalog(mappedSkills)
-        }
-
-        if (Array.isArray(jobsData.jobs) && jobsData.jobs.length > 0) {
-          const mappedJobs: JobItem[] = jobsData.jobs.map(
-            (
-              job: {
-                title: string
-                company?: string | null
-                location?: string | null
-                salary?: string | null
-                jobSkills?: Array<{ required?: boolean; skill?: { name?: string } }>
-              },
-              idx: number
-            ) => ({
-              id: idx + 1,
-              title: job.title,
-              company: job.company || 'Unknown Company',
-              location: job.location || 'Not specified',
-              salary: job.salary || 'Not disclosed',
-              requiredSkills: (job.jobSkills || [])
-                .filter((js) => js.required !== false && js.skill?.name)
-                .map((js) => js.skill!.name!),
-              preferredSkills: (job.jobSkills || [])
-                .filter((js) => js.required === false && js.skill?.name)
-                .map((js) => js.skill!.name!)
-            })
-          )
-          setJobs(mappedJobs)
-        }
-      } catch {
-        setApiError('Showing demo data. API data is currently unavailable.')
-      } finally {
-        setLoadingData(false)
-      }
+        const jobsRes = await fetch('/api/jobs'); // Hits your Prisma route
+        const jobsData = await jobsRes.json();
+       
+        if (Array.isArray(jobsData.jobs)) {
+      const mappedJobs = jobsData.jobs.map((job: any) => ({
+        id: job.id,
+        title: job.title,
+        company: job.company || 'Unknown',
+        location: job.location || 'Remote',
+        salary: job.salary || 'Competitive',
+        // Extract names from jobSkills relation
+        requiredSkills: job.jobSkills
+          .filter((js: any) => js.required)
+          .map((js: any) => js.skill.name),
+        preferredSkills: job.jobSkills
+          .filter((js: any) => !js.required)
+          .map((js: any) => js.skill.name),
+      }));
+      setJobs(mappedJobs);
     }
+  } catch (error) {
+    console.error("Failed to load real jobs:", error);
+  }
+};
 
     void fetchPlatformData()
   }, [])
