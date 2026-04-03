@@ -1,5 +1,7 @@
 import { createServer } from 'http'
 import { Server } from 'socket.io'
+import type { InterviewQuestion } from "./interview-engine";
+import { buildInterviewPlan, gradeAnswer, roundsConfig } from "./interview-engine";
 
 const httpServer = createServer()
 const io = new Server(httpServer, {
@@ -27,6 +29,15 @@ interface Message {
 }
 
 const users = new Map<string, User>()
+
+/** Live AI interview sessions (per socket) */
+interface InterviewSession {
+  skillName: string
+  plan: InterviewQuestion[]
+  index: number
+  correct: number
+}
+const interviews = new Map<string, InterviewSession>()
 
 const generateMessageId = () => Math.random().toString(36).substr(2, 9)
 
@@ -94,6 +105,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on('disconnect', () => {
+    interviews.delete(socket.id)
     const user = users.get(socket.id)
     
     if (user) {
@@ -112,6 +124,94 @@ io.on('connection', (socket) => {
 
   socket.on('error', (error) => {
     console.error(`Socket error (${socket.id}):`, error)
+  })
+
+  // --- Real-time AI technical interview (rapid Q&A) ---
+  socket.on('interview:start', (data: { skillName?: string }) => {
+    const skillName = typeof data?.skillName === 'string' ? data.skillName.trim() : ''
+    if (!skillName) {
+      socket.emit('interview:error', { message: 'Missing skill name' })
+      return
+    }
+    const plan = buildInterviewPlan(skillName)
+    if (plan.length === 0) {
+      socket.emit('interview:error', { message: 'No interview questions available for this skill' })
+      return
+    }
+    const { total, requiredCorrect } = roundsConfig()
+    interviews.set(socket.id, {
+      skillName,
+      plan,
+      index: 0,
+      correct: 0,
+    })
+    socket.emit('interview:started', {
+      skillName,
+      total,
+      requiredCorrect,
+    })
+    const q = plan[0]!
+    socket.emit('interview:question', {
+      id: q.id,
+      prompt: q.prompt,
+      round: 1,
+      total,
+    })
+  })
+
+  socket.on('interview:answer', (data: { answer?: string }) => {
+    const session = interviews.get(socket.id)
+    if (!session) {
+      socket.emit('interview:error', { message: 'No active interview — start again' })
+      return
+    }
+    const plan = session.plan
+    const q = plan[session.index]
+    if (!q) {
+      socket.emit('interview:error', { message: 'Invalid round' })
+      return
+    }
+    const raw = typeof data?.answer === 'string' ? data.answer : ''
+    const ok = gradeAnswer(q, raw)
+    if (ok) session.correct += 1
+
+    const { total, requiredCorrect } = roundsConfig()
+    socket.emit('interview:round-result', {
+      correct: ok,
+      skillName: session.skillName,
+      round: session.index + 1,
+      total,
+      correctSoFar: session.correct,
+      requiredCorrect,
+    })
+
+    session.index += 1
+
+    if (session.index >= plan.length) {
+      const verified = session.correct >= requiredCorrect
+      socket.emit('interview:complete', {
+        skillName: session.skillName,
+        verified,
+        correct: session.correct,
+        total,
+        requiredCorrect,
+      })
+      interviews.delete(socket.id)
+      return
+    }
+
+    const next = plan[session.index]!
+    socket.emit('interview:question', {
+      id: next.id,
+      prompt: next.prompt,
+      round: session.index + 1,
+      total,
+    })
+  })
+
+  socket.on('interview:cancel', () => {
+    interviews.delete(socket.id)
+    socket.emit('interview:cancelled', {})
   })
 })
 

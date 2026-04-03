@@ -1,7 +1,7 @@
 'use client'
 import Link from "next/link"
 import { signIn, signOut, useSession } from "next-auth/react"
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   LogOut,
   BookOpen,
@@ -20,6 +20,7 @@ import {
   Upload,
   User,
   X,
+  Radio,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -31,10 +32,20 @@ import { useTheme } from '@/hooks/use-theme'
 import { useToast } from '@/hooks/use-toast'
 
 import { PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer } from 'recharts'
+import { SkillMatchForceGraph } from '@/components/skill-match-force-graph'
+import { SkillInterviewDialog } from '@/components/skill-interview-dialog'
 
 
 type SkillSource = 'manual' | 'resume' | 'github' | 'assessment'
-type UserSkill = { skill: string; confidence: number; source: SkillSource }
+type SkillVerification = 'none' | 'learning' | 'verified'
+type UserSkill = { skill: string; confidence: number; source: SkillSource; verification?: SkillVerification }
+
+function mergeVerification(a?: SkillVerification, b?: SkillVerification): SkillVerification | undefined {
+  if (a === 'verified' || b === 'verified') return 'verified'
+  if (a === 'learning' || b === 'learning') return 'learning'
+  if (a === 'none' || b === 'none') return 'none'
+  return undefined
+}
 type SkillCatalogItem = { id: number; name: string; category: string }
 type JobItem = {
   id: number
@@ -102,6 +113,7 @@ function mergeSkills(current: UserSkill[], incoming: UserSkill[]): UserSkill[] {
       ...existing,
       confidence: Math.max(existing.confidence, s.confidence),
       source: s.source === 'manual' ? existing.source : s.source,
+      verification: mergeVerification(existing.verification, s.verification),
     })
   }
   return Array.from(map.values()).sort((a, b) => a.skill.localeCompare(b.skill))
@@ -635,10 +647,12 @@ function JobMatchingSection({
 // Skill Gap Analysis Section
 function SkillGapSection({ 
   userSkills, 
-  matches 
+  matches,
+  onStartVerify,
 }: { 
   userSkills: UserSkill[]
-  matches: any[] 
+  matches: any[]
+  onStartVerify: (skill: string) => void
 }) {
   
 const getMissingSkills = () => {
@@ -675,7 +689,9 @@ const getMissingSkills = () => {
             <Target className="w-5 h-5 text-primary" />
             Skill Gap Analysis
           </CardTitle>
-          <CardDescription>Skills you're missing for better job matches (Powered by Neo4j)</CardDescription>
+          <CardDescription>
+            Skills you are missing for stronger matches (Neo4j). Verify a gap live over WebSocket to move it from red gaps to verified green on your graph.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {userSkills.length === 0 ? (
@@ -688,24 +704,46 @@ const getMissingSkills = () => {
           ) : (
              <div className="space-y-3">
               <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground px-2">
-                <div className="col-span-4">Missing Skill</div>
+                <div className="col-span-3 sm:col-span-3">Missing Skill</div>
                 <div className="col-span-2 text-center">Priority</div>
-                <div className="col-span-6">Required For</div>
+                <div className="col-span-4 sm:col-span-4">Required For</div>
+                <div className="col-span-3 text-right">Interview</div>
               </div>
-              {missingSkills.slice(0, 8).map((item, i) => (
+              {missingSkills.slice(0, 8).map((item, i) => {
+                const status = userSkills.find((u) => normalize(u.skill) === normalize(item.skill))?.verification
+                const busy = status === 'learning'
+                const done = status === 'verified'
+                return (
                 <div key={i} className="grid grid-cols-12 gap-2 items-center p-3 bg-background border border-border rounded-lg transition-colors">
-                  <div className="col-span-4 font-medium text-sm text-foreground">{item.skill}</div>
+                  <div className="col-span-3 font-medium text-sm text-foreground">{item.skill}</div>
                   <div className="col-span-2 text-center">
                     <Badge variant={item.count >= 3 ? 'destructive' : item.count >= 2 ? 'default' : 'secondary'}>
                       {item.count} jobs
                     </Badge>
                   </div>
-                  <div className="col-span-6 text-xs text-muted-foreground">
+                  <div className="col-span-4 text-xs text-muted-foreground">
                     {item.jobs.slice(0, 2).join(', ')}
                     {item.jobs.length > 2 && ` +${item.jobs.length - 2} more`}
                   </div>
+                  <div className="col-span-3 flex justify-end">
+                    {done ? (
+                      <Badge variant="outline" className="border-green-700 text-[#4ADE80]">Verified</Badge>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="gap-1 text-xs"
+                        onClick={() => onStartVerify(item.skill)}
+                      >
+                        <Radio className="h-3.5 w-3.5" />
+                        {busy ? 'Resume' : 'Verify live'}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
@@ -833,8 +871,18 @@ function LearningPathSection({
   )
 }
 
-// Skill Spider Analysis
-function SkillGraphSection({ userSkills, jobs }: { userSkills: UserSkill[]; jobs: JobItem[] }) {
+// Skill graph (Neo4j-style) + radar analysis
+function SkillGraphSection({
+  userSkills,
+  jobs,
+  matches,
+  userName,
+}: {
+  userSkills: UserSkill[]
+  jobs: JobItem[]
+  matches: Array<{ title: string; matchScore: number; gaps: string[] }>
+  userName: string
+}) {
   const categoryRadar = useMemo(() => {
     const categories = ['Frontend', 'Backend', 'Programming', 'Database', 'Cloud', 'DevOps', 'AI/ML', 'Tools']
     return categories.map((category) => {
@@ -888,16 +936,34 @@ function SkillGraphSection({ userSkills, jobs }: { userSkills: UserSkill[]; jobs
   }, [jobs, userSkills])
 
   return (
-    <section className="py-8">
+    <section id="skill-graph" className="py-8">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Network className="w-5 h-5 text-primary" />
-            Skill Spider Analysis
+            Skill & Career Graph
           </CardTitle>
-          <CardDescription>Radar charts for strengths, job readiness, and market demand alignment</CardDescription>
+          <CardDescription>
+            Interactive force-directed graph: you at the center, your skills (green), target roles (blue), and skill gaps (red) from graph-based matching
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
+          <div className="min-h-[min(520px,70vh)] w-full">
+            <SkillMatchForceGraph
+              userName={userName}
+              userSkills={userSkills}
+              jobs={jobs}
+              matches={matches}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Matches align with your Neo4j job–skill graph when the database is seeded (
+            <code className="rounded bg-muted px-1 py-0.5 text-[10px]">GET /api/seed-neo4j</code>
+            ).
+          </p>
+          <div className="border-t border-border pt-4">
+            <p className="text-xs font-medium text-muted-foreground mb-3">Radar charts</p>
+          </div>
           <div className="grid md:grid-cols-3 gap-3">
             <div className="bg-background border border-border rounded-lg p-3 h-64">
               <p className="text-xs mb-2 text-muted-foreground">Category confidence</p>
@@ -958,6 +1024,9 @@ export default function Home() {
   const [loadingData, setLoadingData] = useState(true)
   const [apiError, setApiError] = useState<string | null>(null)
   const resumeInputRef = useRef<HTMLInputElement>(null)
+  const [interviewOpen, setInterviewOpen] = useState(false)
+  const [interviewSkill, setInterviewSkill] = useState<string | null>(null)
+  const [interviewSessionId, setInterviewSessionId] = useState(0)
 
   // 2. The New Fast Theme Toggle
   const handleThemeToggle = () => {
@@ -1188,6 +1257,40 @@ export default function Home() {
     return Array.from(count.entries()).sort((a, b) => b[1] - a[1]).map(([name]) => name)
   }, [matches])
 
+  const handleStartVerify = useCallback((skill: string) => {
+    setInterviewSessionId((n) => n + 1)
+    setUserSkills((prev) => {
+      const exists = prev.some((s) => normalize(s.skill) === normalize(skill))
+      if (exists) return prev
+      return mergeSkills(prev, [{ skill, confidence: 0.38, source: 'assessment', verification: 'learning' }])
+    })
+    setInterviewSkill(skill)
+    setInterviewOpen(true)
+  }, [])
+
+  const handleInterviewVerified = useCallback(
+    (skill: string) => {
+      setUserSkills((prev) =>
+        prev.map((s) =>
+          normalize(s.skill) === normalize(skill)
+            ? { ...s, verification: 'verified', confidence: Math.max(s.confidence, 0.88) }
+            : s
+        )
+      )
+      setInterviewOpen(false)
+      setInterviewSkill(null)
+      toast({ title: 'Skill verified', description: `${skill} is now verified on your graph.` })
+    },
+    [toast]
+  )
+
+  const handleInterviewCancel = useCallback((skill: string) => {
+    setUserSkills((prev) =>
+      prev.filter((s) => !(normalize(s.skill) === normalize(skill) && s.verification === 'learning'))
+    )
+    setInterviewSkill(null)
+  }, [])
+
   // 4. The ONLY Return Statement
   return (
     <main className="min-h-screen bg-background text-foreground transition-colors">
@@ -1236,9 +1339,22 @@ export default function Home() {
           onAssessment={handleAssessment}
         />
         <input ref={resumeInputRef} type="file" accept=".txt,.md,.json" className="hidden" onChange={onResumeFileSelected} />
-        <SkillGraphSection userSkills={userSkills} jobs={jobs} />
+        <SkillGraphSection
+          userSkills={userSkills}
+          jobs={jobs}
+          matches={matches}
+          userName={session?.user?.name ?? "You"}
+        />
         <JobMatchingSection userSkills={userSkills} jobs={jobs} matches={matches} />
-        <SkillGapSection userSkills={userSkills} matches={matches} />
+        <SkillGapSection userSkills={userSkills} matches={matches} onStartVerify={handleStartVerify} />
+        <SkillInterviewDialog
+          open={interviewOpen}
+          onOpenChange={setInterviewOpen}
+          skillName={interviewSkill}
+          sessionId={interviewSessionId}
+          onVerified={handleInterviewVerified}
+          onCancel={handleInterviewCancel}
+        />
         <LearningPathSection userSkills={userSkills} jobs={jobs} prioritizedSkills={prioritizedGaps} />
         
         {/* Footer */}
