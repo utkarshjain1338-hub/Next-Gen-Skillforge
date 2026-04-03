@@ -1,117 +1,66 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { readGraph } from "@/lib/neo4j";
 
-// POST - Calculate job match based on user skills
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const userSkills = Array.isArray(body.userSkills) ? body.userSkills : [];
-    const userSkillNames = Array.isArray(body.userSkillNames) ? body.userSkillNames : [];
+    
+    // For testing purposes, if the frontend doesn't send data, we will default 
+    // to starting with 'Python' and trying to reach 'Penetration Testing'
+    const currentSkills = body.skills || ["Python"]; 
+    const targetSkill = body.target || "Penetration Testing"; 
 
-    // Get all jobs with their required skills
-    const jobs = await db.job.findMany({
-      include: {
-        jobSkills: {
-          include: {
-            skill: true
-          }
-        }
-      }
-    });
+    // THE GRAPH ALGORITHM:
+    // 1. Find the nodes the student already knows.
+    // 2. Find the target node they want to reach.
+    // 3. Calculate the shortest path bridging them using Prerequisites and Recommendations.
+    const cypher = `
+      MATCH (start:Skill) WHERE start.name IN $currentSkills
+      MATCH (target:Skill {name: $targetSkill})
+      MATCH path = shortestPath((start)-[:PREREQUISITE_FOR|RECOMMENDED_FOR*]->(target))
+      RETURN [n IN nodes(path) | {name: n.name, category: n.category}] AS learningPath, 
+             length(path) AS steps
+      ORDER BY steps ASC
+      LIMIT 1
+    `;
 
-    // Calculate match score for each job
-    const matches = jobs.map(job => {
-      const requiredSkills = job.jobSkills;
-      let matchedSkills = 0;
-      let totalWeight = 0;
-      let weightedScore = 0;
+    const result = await readGraph(cypher, { currentSkills, targetSkill });
 
-      const skillMatches = requiredSkills.map(js => {
-        const fromId = userSkills.find((us: { skillId: string; confidence: number }) => us.skillId === js.skillId);
-        const fromName = userSkillNames.find(
-          (us: { name: string; confidence: number }) =>
-            typeof us.name === "string" && us.name.toLowerCase().trim() === js.skill.name.toLowerCase().trim()
-        );
-        const userSkill = fromId ?? fromName;
-        const hasSkill = !!userSkill;
-        const confidence = userSkill?.confidence || 0;
-        
-        if (hasSkill) {
-          matchedSkills++;
-          weightedScore += confidence * js.importance;
-        }
-        totalWeight += js.importance;
-
-        return {
-          skill: js.skill,
-          required: js.required,
-          importance: js.importance,
-          hasSkill,
-          confidence
-        };
+    if (result.records.length === 0) {
+      return NextResponse.json({ 
+        message: "No direct learning path found in the current knowledge graph." 
       });
+    }
 
-      const matchPercentage = totalWeight > 0 ? (weightedScore / totalWeight) * 100 : 0;
-      const coveragePercentage = requiredSkills.length > 0 ? (matchedSkills / requiredSkills.length) * 100 : 0;
+    const bestPathNodes = result.records[0].get("learningPath");
+    const stepsCount = result.records[0].get("steps").toNumber();
 
-      return {
-        job,
-        matchScore: Math.round(matchPercentage),
-        coverageScore: Math.round(coveragePercentage),
-        matchedSkillsCount: matchedSkills,
-        totalSkillsCount: requiredSkills.length,
-        skillMatches,
-        gaps: skillMatches.filter((sm: { hasSkill: boolean }) => !sm.hasSkill).map((sm: { skill: { id: string; name: string; category: string | null } }) => ({
-          skillId: sm.skill.id,
-          skillName: sm.skill.name,
-          category: sm.skill.category
-        }))
-      };
-    });
+    // Filter out what the user already knows so we only show the "Gaps"
+    const missingSkills = bestPathNodes
+      .filter((node: any) => !currentSkills.includes(node.name))
+      .map((node: any) => node.name);
 
-    // Sort by match score
-    matches.sort((a, b) => b.matchScore - a.matchScore);
-
-    return NextResponse.json({ matches });
-  } catch (error) {
-    console.error("Error calculating matches:", error);
-    return NextResponse.json(
-      { error: "Failed to calculate matches" },
-      { status: 500 }
-    );
-  }
-}
-
-// GET - Get skill gap analysis for demo
-export async function GET() {
-  try {
-    // Return demo skill gap analysis
+    // Format the base analysis from Neo4j
     const gapAnalysis = {
-      currentSkills: [
-        { name: "JavaScript", confidence: 0.85, category: "Programming" },
-        { name: "React", confidence: 0.75, category: "Frontend" },
-        { name: "Python", confidence: 0.60, category: "Programming" },
-        { name: "SQL", confidence: 0.70, category: "Database" }
-      ],
-      gaps: [
-        { skill: "TypeScript", priority: 5, reason: "Required for 78% of React jobs" },
-        { skill: "Node.js", priority: 4, reason: "Backend integration skills needed" },
-        { skill: "AWS", priority: 3, reason: "Cloud deployment is increasingly required" },
-        { skill: "Docker", priority: 3, reason: "Containerization is standard practice" }
-      ],
-      recommendedPath: [
-        { step: 1, skill: "TypeScript", resource: "TypeScript Fundamentals", duration: "2 weeks" },
-        { step: 2, skill: "Node.js", resource: "Node.js Complete Guide", duration: "3 weeks" },
-        { step: 3, skill: "AWS", resource: "AWS Certified Developer", duration: "4 weeks" },
-        { step: 4, skill: "Docker", resource: "Docker Mastery", duration: "2 weeks" }
-      ]
+      targetGoal: targetSkill,
+      currentSkillsAnalyzed: currentSkills,
+      totalStepsRequired: stepsCount,
+      fullPath: bestPathNodes.map((n: any) => n.name).join(" ➔ "),
+      gapsToLearn: missingSkills,
+      syllabus: [] // We'll populate this next
     };
 
+    
+
+    // Return the combined Graph + AI payload to the React frontend
     return NextResponse.json(gapAnalysis);
+
+  
+    // ... rest of your catch block
   } catch (error) {
-    console.error("Error fetching gap analysis:", error);
+    console.error("Match Engine Graph Error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch gap analysis" },
+      { error: "Failed to calculate dynamic path" },
       { status: 500 }
     );
   }

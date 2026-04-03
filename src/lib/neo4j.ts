@@ -1,38 +1,43 @@
-import neo4j, { Driver } from 'neo4j-driver';
+import neo4j, { Driver } from "neo4j-driver";
 
-// Ensure we don't create multiple connections during Next.js hot-reloads in development
-const globalForNeo4j = globalThis as unknown as {
-  neo4jDriver: Driver | undefined;
-};
+// Ensure we only create one instance of the driver (singleton pattern)
+let driver: Driver | undefined;
 
-const uri = process.env.NEO4J_URI as string;
-const username = process.env.NEO4J_USERNAME as string;
-const password = process.env.NEO4J_PASSWORD as string;
+export function getNeo4jDriver(): Driver {
+  if (!driver) {
+    const uri = process.env.NEO4J_URI || "neo4j://localhost:7687";
+    const user = process.env.NEO4J_USER || "neo4j";
+    const password = process.env.NEO4J_PASSWORD || "skillforge123";
 
-if (!uri || !username || !password) {
-  console.warn("⚠️ Neo4j environment variables are missing. Check your .env file.");
+    try {
+      driver = neo4j.driver(uri, neo4j.auth.basic(user, password));
+      console.log("🟢 Successfully initialized Neo4j Driver");
+    } catch (error) {
+      console.error("🔴 Failed to initialize Neo4j Driver:", error);
+      throw error;
+    }
+  }
+  return driver;
 }
 
-export const driver =
-  globalForNeo4j.neo4jDriver ??
-  neo4j.driver(
-    uri,
-    neo4j.auth.basic(username, password),
-    { disableLosslessIntegers: true } // Makes working with JavaScript numbers easier
-  );
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForNeo4j.neo4jDriver = driver;
-}
-
-/**
- * A handy utility function to run a Cypher query and automatically close the session
- */
-export async function runQuery(cypher: string, params: Record<string, any> = {}) {
+// Utility function to make querying easier and automatically close the session
+export async function readGraph(cypher: string, params: Record<string, any> = {}) {
+  const driver = getNeo4jDriver();
   const session = driver.session();
   try {
-    const result = await session.run(cypher, params);
-    return result.records;
+    const result = await session.executeRead((tx) => tx.run(cypher, params));
+    return result;
+  } finally {
+    await session.close();
+  }
+}
+
+export async function writeGraph(cypher: string, params: Record<string, any> = {}) {
+  const driver = getNeo4jDriver();
+  const session = driver.session();
+  try {
+    const result = await session.executeWrite((tx) => tx.run(cypher, params));
+    return result;
   } finally {
     await session.close();
   }
